@@ -37,7 +37,7 @@ OperandStack* operand_stack;
 void* operand_pointer;
 
 
-void interpret_bc (Program* p) {
+void interpret_bc (Program* p, int jit_flag) {
   printf("Interpreting Bytecode Program:\n");
 
   // create memory manager
@@ -77,8 +77,11 @@ void interpret_bc (Program* p) {
   operand_pointer = operand_stack->stack;
 
   // execution on
-  // exec_instr(pool, genv, global_slots, local_frame, entry);
-  jit_diver(pool, genv, entry);
+  if (jit_flag){
+    jit_diver(pool, genv, entry);
+  } else {
+    exec_instr(pool, genv, global_slots, local_frame, entry);
+  } 
 }
 
 

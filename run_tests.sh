@@ -8,7 +8,7 @@ rm output/*.ast
 # Run output
 function test {
    ./parser -i tests/$1.feeny -oast output/$1.ast
-   ./cfeeny output/$1.ast > output/$1.out
+   ./cfeeny -ij output/$1.ast > output/$1.out
 }
 test hello
 test hello2
@@ -28,3 +28,6 @@ test vector
 test sudoku
 test sudoku2
 test memory
+test hanoi
+test morehanoi
+test stack
