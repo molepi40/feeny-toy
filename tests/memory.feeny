@@ -1,0 +1,19 @@
+defn get_array () :
+    array(1024, 10)
+
+defn get_object () :
+    object:
+        var a = get_array()
+        var b = 114514
+        var c = null
+
+defn main () :
+    var i = 0
+    var obj = 0
+    while i < 100000:
+        obj = get_object()
+        printf("~: a[~] = ~, b = ~\n", i, i % 1024, obj.a[i % 1024], obj.b)
+        i = i + 1
+    0
+
+main()
