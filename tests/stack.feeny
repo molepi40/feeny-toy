@@ -1,0 +1,35 @@
+defn stack (c) :
+    object:
+        var capacity = c
+        var data = array(c, 0)
+        var top = -1
+        var size = 0
+
+        method push (elem) :
+            this.top = this.top + 1
+            this.data[this.top] = elem
+            this.size = this.size + 1
+        
+        method peek () :
+            this.data[this.top]
+        
+        method pop () :
+            var elem = this.data[this.top]
+            this.top = this.top - 1
+            this.size = this.size - 1
+            elem
+
+defn main () :
+    var s = stack(10)
+
+    var i = 0
+    while i < 10 :
+        s.push(i * 10)
+        i = i + 1
+
+    while s.size > 0 :
+        printf("About to pop: ~\n", s.peek())
+        printf("Popped: ~\n", s.pop())
+
+main()
+ 

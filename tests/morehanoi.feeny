@@ -1,0 +1,65 @@
+defn stack (i, c) :
+    object:
+        var id = i
+        var capacity = c
+        var data = array(c, 0)
+        var top = -1
+        var size = 0
+
+        method push (elem) :
+            this.top = this.top + 1
+            this.data[this.top] = elem
+            this.size = this.size + 1
+        
+        method peek () :
+            this.data[this.top]
+        
+        method pop () :
+            var elem = this.data[this.top]
+            this.top = this.top - 1
+            this.size = this.size - 1
+            elem
+
+defn print_stack (x):
+    if x == 0:
+        printf("A")
+    if x == 1:
+        printf("B")
+    if x == 2:
+        printf("C")
+
+defn print_move (plate, A, B):
+    printf("Move plate ~ from ", plate)
+    print_stack(A)
+    printf(" stack to ")
+    print_stack(B)
+    printf(" stack\n")
+
+defn hanoi (n, A, B, C) :
+    if n == 1 :
+        print_move(A.peek(), A.id, B.id)
+        B.push(A.pop())
+        ;printf("Move plate from ~ stack to ~ stack\n", A, B)
+    else :
+        hanoi(n - 1, A, C, B)
+        print_move(A.peek(), A.id, B.id)
+        B.push(A.pop())
+        ;printf("Move plate from ~ stack to ~ stack\n", A, B)
+        hanoi(n - 1, C, B, A)
+
+defn morehanoi (n):
+    var A = stack(0, 6)
+    var B = stack(1, 6)
+    var C = stack(2, 6)
+
+    var i = 6
+    while i > 0 :
+        A.push(i)
+        i = i - 1
+
+    hanoi(n, A, B, C)
+
+defn main ():
+    morehanoi(6)
+
+main()

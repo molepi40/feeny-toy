@@ -1,0 +1,29 @@
+defn print_stack (x):
+    if x == 0:
+        printf("A")
+    if x == 1:
+        printf("B")
+    if x == 2:
+        printf("C")
+
+defn print_move (A, B):
+    printf("Move plate from ")
+    print_stack(A)
+    printf(" stack to ")
+    print_stack(B)
+    printf(" stack\n")
+
+defn hanoi (n, A, B, C) :
+    if n == 1 :
+        print_move(A, B)
+        ;printf("Move plate from ~ stack to ~ stack\n", A, B)
+    else :
+        hanoi(n - 1, A, C, B)
+        print_move(A, B)
+        ;printf("Move plate from ~ stack to ~ stack\n", A, B)
+        hanoi(n - 1, C, B, A)
+
+defn main () :
+    hanoi(6, 0, 1, 2)
+
+main()
