@@ -6,7 +6,6 @@
 
 extern ConstantPool* pool;
 extern GlobalEnvironment* genv;
-extern CodeSection* code_section;
 extern void* global_slots;
 
 
@@ -17,7 +16,7 @@ void* jit_compile_method(MethodObj* method) {
         return method->assembly;
     }
     CodeSection* code_section = make_code_section();
-    method->assembly = code_section->code;
+    method->assembly = code_section->code;    
     Vector* code = method->code;
     ByteIns* instr;
     for (int i = 0; i < vector_size(code); ++i) {
@@ -160,17 +159,21 @@ void* jit_compile_method(MethodObj* method) {
             }
 
             case SLOT_OP: {
-                jit_emit_trap_ins(code_section, instr, SLOT_CODE);
+                jit_emit_slot_ins(code_section, instr, SLOT_CODE);
                 break;
             }
 
             case SET_SLOT_OP: {
-                jit_emit_trap_ins(code_section, instr, SET_SLOT_CODE);
+                jit_emit_set_slot_ins(code_section, instr, SET_SLOT_CODE);
                 break;
             }
 
             case CALL_SLOT_OP: {
-                jit_emit_trap_ins(code_section, instr, CALL_SLOT_CODE);
+                CallSlotIns* instr1 = (CallSlotIns*)instr;
+                StringObj* method_name = vector_get(pool, instr1->name);
+                int arity = instr1->arity;
+                PRIMITIVE_OPCODE op_code = get_primitive_opcode(method_name->value);
+                jit_emit_call_slot_ins(code_section, arity, op_code, CALL_SLOT_CODE, instr); 
                 break;
             }
         }
@@ -253,13 +256,99 @@ void jit_emit_array_ins(CodeSection* code_section) {
     return;
 }
 
+void jit_emit_call_slot_ins(CodeSection* code_section, int arity, PRIMITIVE_OPCODE op_code, OPERATION_ID op_id, ByteIns* bytecode_instr) {
+    size_t code_size = call_slot_ins_end - call_slot_ins;
+    void* code_pointer = code_section->code_pointer;
+    memcpy(code_pointer, call_slot_ins, code_size);
+    *((int64_t*)(code_pointer + 2)) = (int64_t)op_code;
+    *((int64_t*)(code_pointer + 12)) = (int64_t)arity;
+    *((uint64_t*)(code_pointer + 47)) = (uint64_t)primitive_int_op;
+    *((uint64_t*)(code_pointer + 86)) = (uint64_t)primitive_array_op;
+    *((uint64_t*)(code_pointer + 126)) = (uint64_t)bytecode_instr;
+    *((uint64_t*)(code_pointer + 136)) = (uint64_t)trap_to_c;
+    *((int64_t*)(code_pointer + 150)) = (int64_t)op_id;
+    code_section->code_pointer += code_size;
+    return;
+}
+
 void jit_emit_trap_ins(CodeSection* code_section, ByteIns* bytecode_instr, int op_id) {
     size_t code_size = trap_ins_end - trap_ins;
     void* code_pointer = code_section->code_pointer;
     memcpy(code_pointer, trap_ins, code_size);
     *((uint64_t*)(code_pointer + 11)) = (uint64_t)bytecode_instr;
     *((uint64_t*)(code_pointer + 21)) = (uint64_t)trap_to_c;
-    *((uint64_t*)(code_pointer + 35)) = (int64_t)op_id;
+    *((int64_t*)(code_pointer + 35)) = (int64_t)op_id;
     code_section->code_pointer += code_size;
     return;
+}
+
+void* jit_emit_set_up_call_slot(CodeSection* code_section, void* ra, int nargs, int nlocals, void* method_addr) {
+    size_t code_size = set_up_call_slot_end - set_up_call_slot;
+    void* code_pointer = code_section->code_pointer;
+    memcpy(code_pointer, set_up_call_slot, code_size);
+    // mov ra, nargs and nlocals
+    *((uint64_t*)(code_pointer + 2)) = (uint64_t)ra;
+    *((int64_t*)(code_pointer + 12)) = (int64_t)nargs;
+    *((int64_t*)(code_pointer + 22)) = (int64_t)nlocals;
+    *((uint64_t*)(code_pointer + 105)) = (uint64_t)method_addr;
+    code_section->code_pointer += code_size;
+    return code_pointer;    
+}
+
+void jit_emit_slot_ins(CodeSection* code_section, ByteIns* bytecode_instr, int op_id) {
+    size_t code_size = slot_ins_end - slot_ins;
+    void* code_pointer = code_section->code_pointer;
+    memcpy(code_pointer, slot_ins, code_size);
+    *((uint64_t*)(code_pointer + 91)) = (uint64_t)bytecode_instr;
+    *((uint64_t*)(code_pointer + 101)) = (uint64_t)trap_to_c;
+    *((int64_t*)(code_pointer + 115)) = (int64_t)op_id;
+    code_section->code_pointer += code_size;
+    return;
+}
+
+void jit_emit_set_slot_ins(CodeSection* code_section, ByteIns* bytecode_instr, int op_id) {
+    size_t code_size = set_slot_ins_end - set_slot_ins;
+    void* code_pointer = code_section->code_pointer;
+    memcpy(code_pointer, set_slot_ins, code_size);
+    *((uint64_t*)(code_pointer + 98)) = (uint64_t)bytecode_instr;
+    *((uint64_t*)(code_pointer + 108)) = (uint64_t)trap_to_c;
+    *((int64_t*)(code_pointer + 122)) = (int64_t)op_id;
+    code_section->code_pointer += code_size;
+    return;
+}
+
+PRIMITIVE_OPCODE get_primitive_opcode(char* op_name) {
+    PRIMITIVE_OPCODE opcode;
+    if (strcmp(op_name, "add") == 0) {
+        opcode = ADD_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "sub") == 0) {
+        opcode = SUB_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "mul") == 0) {
+        opcode = MUL_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "div") == 0) {
+        opcode = DIV_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "mod") == 0) {
+        opcode = MOD_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "sub") == 0) {
+        opcode = SUB_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "lt") == 0) {
+        opcode = LT_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "gt") == 0) {
+        opcode = GT_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "le") == 0) {
+        opcode = LE_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "ge") == 0) {
+        opcode = GE_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "eq") == 0) {
+        opcode = EQ_PRIMIT_INT_OP;
+    } else if (strcmp(op_name, "get") == 0) {
+        opcode = GET_PRIMIT_ARRAY_OP;
+    } else if (strcmp(op_name, "set") == 0) {
+        opcode = SET_PRIMIT_ARRAY_OP;
+    } else if (strcmp(op_name, "length") == 0) {
+        opcode = LENGTH_PRIMIT_ARRAY_OP;
+    } else {
+        opcode = CALL_SLOT_INSTANCE_OP;
+    }
+    return opcode;
 }

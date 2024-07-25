@@ -42,11 +42,25 @@
     .global array_ins
     .global array_ins_end
 
+    .global call_slot_ins
+    .global call_slot_ins_end
+    .global primitive_int_op
+    .global primitive_array_op
+    .global jump_opcode
+
     .global trap_ins
     .global trap_ins_end
 
     .global trap_to_c
     .global trap_to_c_end
+
+    .global set_up_call_slot
+    .global set_up_call_slot_end
+
+    .global slot_ins
+    .global slot_ins_end
+    .global set_slot_ins
+    .global set_slot_ins_end
 
 
 call_cfeeny:
@@ -330,6 +344,220 @@ array_ins:
 array_ins_end:
 
 
+call_slot_ins:
+    # get receiver
+    movq $0xcafebabecafebabe, %r8    # opcode
+    movq $0xcafebabecafebabe, %rax   # nargs, receiver included
+    xorq $-1, %rax
+    addq $0x1, %rax
+    movq (%rdx, %rax, 8), %rax   # primitive
+    # check its type
+    movq %rax, %r9
+    andq $0x7, %r9
+    # check int
+    cmpq $0x0, %r9
+    jne check_object
+    movq $0xcafebabecafebabe, %r10  # primitive int op, absolute addr
+    call *%r10
+    jmp call_slot_ins_end    # jmp to end
+
+    check_object:
+    cmpq $0x1, %r9
+    je primit_instance_op
+    # invalid primitive tag
+    jmp exit_program
+
+    primit_instance_op:
+    # get pointer
+    andq $0xfffffffffffffff8, %rax
+    # check tag
+    mov (%rax), %r9d
+    # check array tag
+    cmp $0x3, %r9d
+    jne check_instance
+    movq $0xcafebabecafebabe, %r10  # primitive array op, absolute addr
+    call *%r10
+    jmp call_slot_ins_end    # jmp to end
+
+    check_instance:
+    cmp $0x4, %r9d
+    je instance_call_cache_check
+
+    exit_program:
+    # invalid receiver
+    movl $0x1, %edi
+    call exit@PLT
+
+    instance_op_trap:
+    # prelude
+    pushq %rdi
+    pushq %rsi
+    # store pc
+    leaq call_slot_ins_end(%rip), %rdi  
+    # store instruction
+    movq $0xcafebabecafebabe, %rsi
+    # call trap_to_c
+    movq $0xcafebabecafebabe, %rax
+    call *%rax
+    # ending
+    popq %rsi
+    popq %rdi
+    # operation code
+    movq $0xcafebabecafebabe, %rax    
+    ret
+    
+    instance_call_cache_check:
+    movq 8(%rax), %r8
+    leaq call_slot_ins_end(%rip), %r9
+    movq -8(%r9), %r10
+    # check if cached
+    cmpq $-1, %r10
+    je instance_op_trap
+    cmpq %r10, %r8
+    jne instance_op_trap
+    movq -16(%r9), %r10
+    jmp *%r10
+    jmp call_slot_ins_end
+
+.quad -1
+.quad -1
+call_slot_ins_end:
+
+
+primitive_array_op:
+
+    jmp check_opcode    
+
+primitive_int_op:
+    # operand 0 in %rax
+    sarq $0x3, %rax  # operand 0
+    addq $-8, %rdx   # top of receiver
+    movq (%rdx), %r9
+    sarq $0x3, %r9   # operand 1
+
+    check_opcode:
+    leaq jmp_opcode(%rip), %r11
+    leaq (%r11, %r8, 2), %r10
+    jmp *%r10
+    
+    jmp_opcode:
+    jmp primitive_int_add_op
+    jmp primitive_int_sub_op
+    jmp primitive_int_mul_op
+    jmp primitive_int_div_op
+    jmp primitive_int_mod_op
+    jmp primitive_int_lt_op
+    jmp primitive_int_gt_op
+    jmp primitive_int_le_op
+    jmp primitive_int_ge_op
+    jmp primitive_int_eq_op
+    jmp primitive_array_get_op
+    jmp primitive_array_set_op
+    jmp primitive_array_length_op
+
+    primitive_int_add_op:
+    # int add
+    addq %r9, %rax
+    jmp make_primitive_int
+
+    primitive_int_sub_op:
+    # int sub
+    subq %r9, %rax
+    jmp make_primitive_int
+
+    primitive_int_mul_op:
+    # int mul
+    pushq %rdx
+    imulq %r9
+    popq %rdx
+    jmp make_primitive_int
+
+    primitive_int_div_op:
+    # int div
+    pushq %rdx
+    cqto
+    idivq %r9
+    popq %rdx
+    jmp make_primitive_int
+
+    primitive_int_mod_op:
+    # int mod
+    pushq %rdx
+    cqto
+    idivq %r9
+    movq %rdx, %rax
+    popq %rdx
+    jmp make_primitive_int
+
+    primitive_int_lt_op:
+    # int lt
+    cmpq %r9, %rax
+    setl %al
+    jmp check_comparasion
+
+    primitive_int_gt_op:
+    # int gt
+    cmpq %r9, %rax
+    setg %al
+    jmp check_comparasion
+    
+    primitive_int_le_op:
+    # int le
+    cmpq %r9, %rax
+    setle %al
+    jmp check_comparasion
+    
+    primitive_int_ge_op:
+    # int ge
+    cmpq %r9, %rax
+    setge %al
+    jmp check_comparasion
+    
+    primitive_int_eq_op:
+    # int eq
+    cmpq %r9, %rax
+    sete %al
+    jmp check_comparasion
+
+    # array get
+    primitive_array_get_op:
+    addq $-8, %rdx
+    movq (%rdx), %r9
+    sarq $0x3, %r9
+    movq 16(%rax, %r9, 8), %rax
+    jmp store_stack
+
+    # array set
+    primitive_array_set_op:
+    movq -8(%rdx), %r10 # value
+    addq $-16, %rdx
+    movq (%rdx), %r9    
+    sarq $0x3, %r9      # index
+    movq %r10, 16(%rax, %r9, 8)
+    movq $0x2, %rax     # push null to operand stack
+    jmp store_stack
+
+    # array length
+    primitive_array_length_op:
+    mov 8(%rax), %eax
+    cltq
+    jmp make_primitive_int
+
+    check_comparasion:
+    cmpb $0x0, %al
+    jne make_primitive_int
+    movq $0x2, %rax
+    jmp store_stack
+    
+    make_primitive_int:
+    salq $0x3, %rax
+
+    store_stack:
+    movq %rax, -8(%rdx)
+    ret
+
+primitive_int_op_end:
+
 trap_ins:
     # prelude
     pushq %rdi
@@ -354,3 +582,170 @@ trap_to_c:
     movq %rsi, BYTECODE_INSTR(%rip)
     ret
 trap_to_c_end:
+
+
+set_up_call_slot:
+    # movq ops
+    movq $0xcafebabecafebabe, %r8  # ra
+    movq $0xcafebabecafebabe, %r9  # nargs
+    movq $0xcafebabecafebabe, %r10 # nlocals
+    # create new frame
+    # parent frame
+    movq %rcx, (%rbx)
+    movq %rbx, %rcx
+    # return address
+    movq %r8, 8(%rcx) 
+    # nslots
+    addq %r9, %r10
+    movq %r10, 16(%rcx)
+    # update frame pointer
+    leaq 24(%rcx, %r10, 8), %rbx
+    
+    # mov arguments
+    movq %r9, %rax
+    xorq $-1, %rax
+    addq $0x1, %rax           # flip rax  
+    leaq (%rdx, %rax, 8), %r8 # start of args in operand stack
+    pushq %r8                 # store new operand stack pointer
+    leaq 24(%rcx), %r10       # start of args in local frame
+    andq $0x0, %r11           # loop counter
+    
+    loop_test_3:
+    cmpq %r11, %r9 # nargs - i
+    jle loop_end_3
+    movq (%r8), %rax
+    movq %rax, (%r10)
+    addq $0x8, %r8
+    addq $0x8, %r10
+    addq $0x1, %r11
+    jmp loop_test_3
+    loop_end_3:
+
+    # set operand stack pointer
+    popq %rdx
+
+    # jmp to method code
+    movq $0xcafebabecafebabe, %rax
+    jmp *%rax
+
+set_up_call_slot_end:
+
+slot_ins:
+    # check ever cached
+    leaq slot_ins_end(%rip), %r8
+    movq -8(%r8), %rax
+    cmpq $-1, %rax
+    je slot_ins_trap
+    
+    # get instance pointer
+    movq -8(%rdx), %r9
+    andq $0xfffffffffffffff8, %r9
+    # get class
+    movq 8(%r9), %r10
+    # check if cached
+    movq -8(%r8), %rax
+    cmpq %rax, %r10
+    jne slot_ins_trap
+
+    # get slot layer
+    movq -16(%r8), %r10
+    andq $0x0, %r11
+    loop_test_4:
+    cmpq %r11, %r10
+    jle loop_end_4
+    movq 16(%r9), %r9   # parent object
+    andq $0xfffffffffffffff8, %r9
+    addq $0x1, %r11
+    jmp loop_test_4
+    loop_end_4:
+
+    # load cached index
+    movq -24(%r8), %r10
+    movq 24(%r9, %r10, 8), %rax
+    movq %rax, -8(%rdx)
+    jmp slot_ins_end
+
+    slot_ins_trap:
+    # prelude
+    pushq %rdi
+    pushq %rsi
+    # store pc
+    leaq slot_ins_end(%rip), %rdi  
+    # store instruction
+    movq $0xcafebabecafebabe, %rsi
+    # call trap_to_c
+    movq $0xcafebabecafebabe, %rax
+    call *%rax
+    # ending
+    popq %rsi
+    popq %rdi
+    # operation code
+    movq $0xcafebabecafebabe, %rax    
+    ret
+
+.quad -1
+.quad -1
+.quad -1
+slot_ins_end:
+
+
+set_slot_ins:
+    # check ever cached
+    leaq slot_ins_end(%rip), %r8
+    movq -8(%r8), %rax
+    cmpq $-1, %rax
+    je set_slot_ins_trap
+    
+    # get instance pointer
+    movq -16(%rdx), %r9
+    andq $0xfffffffffffffff8, %r9
+    # get class
+    movq 8(%r9), %r10
+    # check if cached
+    movq -8(%r8), %rax
+    cmpq %rax, %r10
+    jne set_slot_ins_trap
+
+    # get slot layer
+    movq -16(%r8), %r10
+    andq $0x0, %r11
+    loop_test_5:
+    cmpq %r11, %r10
+    jle loop_end_5
+    movq 16(%r9), %r9   # parent object
+    andq $0xfffffffffffffff8, %r9
+    addq $0x1, %r11
+    jmp loop_test_5
+    loop_end_5:
+
+    # load cached index
+    movq -24(%r8), %r10
+    # set slot
+    addq $-8, %rdx
+    movq (%rdx), %rax
+    movq %rax, 24(%r9, %r10, 8)
+    movq %rax, -8(%rdx)
+    jmp slot_ins_end
+
+    set_slot_ins_trap:
+    # prelude
+    pushq %rdi
+    pushq %rsi
+    # store pc
+    leaq set_slot_ins_end(%rip), %rdi  
+    # store instruction
+    movq $0xcafebabecafebabe, %rsi
+    # call trap_to_c
+    movq $0xcafebabecafebabe, %rax
+    call *%rax
+    # ending
+    popq %rsi
+    popq %rdi
+    # operation code
+    movq $0xcafebabecafebabe, %rax    
+    ret
+
+.quad -1
+.quad -1
+.quad -1
+set_slot_ins_end:

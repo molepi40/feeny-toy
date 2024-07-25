@@ -6,6 +6,7 @@ This repository is the archive of my implementation of labs from [UCB CS294-113:
 - [x] Copying garbage collector
 - [x] Tagged primitives optimization
 - [x] Just-in-time compilation for part instructions
+- [x] Primitive inlining & callsite caches & slot caches
 
 ## Test
 
